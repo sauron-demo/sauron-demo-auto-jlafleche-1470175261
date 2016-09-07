@@ -1,6 +1,7 @@
+
 # TODO(bbao): Think of better way than to copy paste from yourPeople3.
 initial_state: CodeReviewState
-merged_state: ManualGateState_1
+merged_state: FrodoState
 
 state_machine:
   CodeReviewState:
@@ -17,6 +18,8 @@ state_machine:
         - affected-only-buildkite: null
         - buildkite-fullsuite:
             remove_from_master_comment: true
+        - buildkite-appsuite:
+            remove_from_master_comment: true
     hotfix: true
     skip-ci: true
     on_success:
@@ -24,6 +27,7 @@ state_machine:
     on_failure:
       transition_state: CodeReviewState
 
+  # DO NOT DELETE
   GondorState:
     parallelism: '40'
     status_checks:
@@ -38,18 +42,43 @@ state_machine:
     status_checks:
       - merged: null
     on_success:
-      transition_state: ManualGateState_1
+      transition_state: FrodoState
     on_failure:
       transition_state: CodeReviewState
 
-  ManualGateState_1:
+  FrodoState:
     status_checks:
-     - manual-gate: null
+      - frodo: null
+    on_success:
+      transition_state: IntegrationTestState
+    on_failure:
+      transition_state: null
+
+  IntegrationTestState:
+    status_checks:
+      - mordor-glue: null
+      - mordor-canary: null
+    on_success:
+      transition_state: ValidationState
+    on_failure:
+      transition_state: null
+    mordor:
+      mordor-glue:
+        parallelism: 5
+      mordor-canary:
+        parallelism: 10
+        
+  ValidationState:
+    status_checks:
+      - sentry-frontend-beta: null
+      - sentry-backend-beta: null
+      - sumologic-5xx: null
     on_success:
       transition_state: ManualGateState_2
     on_failure:
       transition_state: null
 
+  # looks stupid but this is actually used for tests.
   ManualGateState_2:
     status_checks:
      - manual-gate: null
@@ -65,8 +94,10 @@ state_machine:
     on_failure:
       transition_state: null
 
-
 hotfix:
+  approved_team_names:
+    - Infrastructure
+    - Hotfix Approvers
   master-hotfix:
     branch_name: master
     label_name: 'HOTFIX: Master Merge'
@@ -81,6 +112,7 @@ hotfix:
       transition_state: QueuedState
     on_failure:
       transition_state: CodeReviewState
+
 
 label_locks:
   'Hotfix: Master Merge':
@@ -166,3 +198,10 @@ diff_processor:
     strings_to_check:
       check_deleted:
         - 'this string does not exist'
+  test_diff_percentage:
+    actions:
+      label:
+        label_name: 'App Suite: abc'
+    included_paths:
+      - changes/test_diff_processor.txt
+    min_percentage: 70
