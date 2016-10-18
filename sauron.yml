@@ -1,6 +1,7 @@
+
 # TODO(bbao): Think of better way than to copy paste from yourPeople3.
 initial_state: CodeReviewState
-merged_state: MergedState
+merged_state: ManualGateState_1
 
 state_machine:
   CodeReviewState:
@@ -17,16 +18,21 @@ state_machine:
         - affected-only-buildkite: null
         - buildkite-fullsuite:
             remove_from_master_comment: true
+        - buildkite-appsuite:
+            remove_from_master_comment: true
     hotfix: true
     skip-ci: true
     on_success:
       transition_state: GondorState
       override_transition_state:
         QueuedState:
-          - buildkite-fullsuite
+          -
+            - buildkite-fullsuite
+            - buildkite-appsuite      
     on_failure:
       transition_state: CodeReviewState
 
+  # DO NOT DELETE
   GondorState:
     parallelism: '40'
     status_checks:
@@ -41,11 +47,29 @@ state_machine:
     status_checks:
       - merged: null
     on_success:
-      transition_state: MergedState
+      transition_state: ManualGateState_1
     on_failure:
       transition_state: CodeReviewState
+      
+  # looks stupid but this is actually used for tests.
+  ManualGateState_1:
+    status_checks:
+     - manual-gate: null
+    on_success:
+      transition_state: ManualGateState_2
+    on_failure:
+      transition_state: null
 
-  MergedState:
+  # looks stupid but this is actually used for tests.
+  ManualGateState_2:
+    status_checks:
+     - manual-gate: null
+    on_success:
+      transition_state: EndState
+    on_failure:
+      transition_state: null
+      
+  EndState:
     status_checks: []
     on_success:
       transition_state: null
@@ -70,6 +94,24 @@ hotfix:
       transition_state: QueuedState
     on_failure:
       transition_state: CodeReviewState
+
+
+label_locks:
+  'Hotfix: Master Merge':
+    team_exemptions:
+      - Infrastructure
+      - Hotfix Approvers
+    actions_blacklist:
+      - labeled
+  'HOTFIX: Production Merge':
+    team_exemptions:
+      - Infrastructure
+      - Hotfix Approvers
+    actions_blacklist:
+      - labeled
+  'Awesome Sauron Label':
+    actions_blacklist:
+      - unlabeled
 
 skip-ci:
   min_char_length: 10
@@ -131,8 +173,6 @@ diff_processor:
     strings_to_check:
       check_added:
         - 'testing push on diff processor'
-    include_paths:
-      - 'changes/'
   testing_failed_rule:
     actions:
       pr_comment:
@@ -140,3 +180,25 @@ diff_processor:
     strings_to_check:
       check_deleted:
         - 'this string does not exist'
+  test_diff_percentage:
+    actions:
+      label:
+        label_name: 'App Suite: Abc'
+    included_paths:
+      - changes/test_diff_processor.txt
+    min_percentage: 70
+  resource_ownership:
+    resource_to_check:
+      django_test:
+        base_class:
+          - TestCase
+      django_model:
+        base_class:
+          - Model
+          - ExtendedModel
+      eta_task:
+        base_class:
+          - Task
+        func_decorator:
+          - task
+          - periodic_task
